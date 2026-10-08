@@ -14,8 +14,16 @@ export function ListingCard({
 }) {
   return (
     <Pressable style={styles.card} onPress={onOpen}>
+      {/* IMAGE + OVERLAYS */}
       <View style={styles.photo}>
         <Image source={{ uri: item.image }} style={styles.image} />
+
+        {/* Price badge — bottom left of image */}
+        <View style={styles.priceBadge}>
+          <Text style={styles.priceText}>${item.price}</Text>
+        </View>
+
+        {/* Save button — top right */}
         <Pressable
           accessibilityLabel={saved ? "Remove saved item" : "Save item"}
           style={styles.save}
@@ -26,17 +34,16 @@ export function ListingCard({
           </Text>
         </Pressable>
       </View>
+
+      {/* CARD BODY */}
       <View style={styles.body}>
-        <View style={styles.row}>
-          <Text style={styles.title} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.price}>${item.price}</Text>
-        </View>
-        <Text style={styles.muted}>
+        <Text style={styles.title} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <Text style={styles.condition}>
           {item.condition} · {item.campus}
         </Text>
-        <Text style={styles.tiny}>Listed by {item.seller}</Text>
+        <Text style={styles.seller}>Listed by {item.seller}</Text>
       </View>
     </Pressable>
   );
@@ -51,8 +58,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E9ECE6",
   },
-  photo: { height: 148, backgroundColor: "#E5ECE5" },
-  image: { width: "100%", height: "100%" },
+
+  photo: {
+    height: 148,
+    backgroundColor: "#E5ECE5",
+  },
+
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+
+  priceBadge: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    backgroundColor: "#1F5D4C",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
+  priceText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
   save: {
     position: "absolute",
     top: 10,
@@ -64,19 +96,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   heart: { color: "#365B4C", fontSize: 21 },
   red: { color: "#C3535B" },
-  body: { padding: 12 },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: 5 },
+
+  body: {
+    padding: 12,
+  },
+
   title: {
-    flex: 1,
-    minHeight: 34,
     color: "#1B3A33",
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
+    marginBottom: 4,
   },
-  price: { color: "#1C7057", fontSize: 14, fontWeight: "800" },
-  muted: { color: "#87918C", fontSize: 12 },
-  tiny: { color: "#A0AAA4", fontSize: 10, marginTop: 5 },
+
+  condition: {
+    color: "#87918C",
+    fontSize: 11,
+    marginBottom: 3,
+  },
+
+  seller: {
+    color: "#A0AAA4",
+    fontSize: 10,
+  },
 });
