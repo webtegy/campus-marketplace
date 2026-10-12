@@ -1,0 +1,11 @@
+{
+  "name": "campus-marketplace-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix ./campus-marketplace-assignment-final run start",
+    "web": "npm --prefix ./campus-marketplace-assignment-final run web",
+    "android": "npm --prefix ./campus-marketplace-assignment-final run android",
+    "ios": "npm --prefix ./campus-marketplace-assignment-final run ios"
+  }
+}
