@@ -32,10 +32,15 @@ The client Firebase configuration is intentionally public. Access control belong
 
 ## Current product flows
 
-- Explore listings with search and category filters.
-- Browse and search without signing in; Google sign-in is required to contact sellers or publish listings.
-- Save and unsave listings.
-- Open a listing detail view and start a seller conversation.
-- Publish a basic listing through the Sell flow.
-- Sign in anonymously for a frictionless student account.
-- View Saved, Messages, and Profile pages.
+**Buyer mode**
+- Search with filters: min/max price, category, condition, campus, discounted-only and sorting.
+- Product sheet: short description, heart (save), chat with seller, add to cart.
+- Event merch: colour, size and design pickers (all bookmark / t-shirt designs shown as a grid).
+- Event offers and notices (percent off, buy-one-get-one, free gift, plain notices) applied in the cart.
+- Profile: cart shortcut, ongoing orders, past orders and saved items.
+
+**Seller mode** (switch in the top-right corner)
+- Dashboard, product management (add / edit / sold out / delete), event organizer space and orders.
+- Event organizers create events, sell tickets / t-shirts / caps / bookmarks and publish offers.
+
+Orders, chats, events and offers are in-memory demo data for now. Product listings use Firestore when it is configured.

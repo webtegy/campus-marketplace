@@ -2,17 +2,18 @@ import { StatusBar } from "expo-status-bar";
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
+  createUserWithEmailAndPassword,
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
   signInAnonymously,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  signOut,
+  updateProfile,
   User,
 } from "firebase/auth";
 import {
-  addDoc,
   collection,
   doc,
   onSnapshot,
@@ -22,28 +23,17 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { EmptyState } from "./components/EmptyState";
-import { ExplorePage } from "./pages/ExplorePage";
-import { MessagesPage } from "./pages/MessagesPage";
-import { MyListingsPage } from "./pages/MyListingsPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { SavedPage } from "./pages/SavedPage";
-import { seedListings } from "./data";
+import { Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { BottomTabs, buyerTabs } from "./components/BottomTabs";
+import { ModeToggle } from "./components/ModeToggle";
+import { seedEvents, seedListings, seedOffers } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { Listing, Tab } from "./types";
+import { AuthPage, SignUpData } from "./pages/AuthPage";
+import { HomePage } from "./pages/HomePage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { DiscountsPage, EventsPage } from "./pages/SubPages";
+import { colors } from "./theme";
+import { CampusEvent, Listing, Mode, Offer, SubPage, Tab } from "./types";
 
 async function registerUser(user: User) {
   if (!db) return;
@@ -62,18 +52,36 @@ async function registerUser(user: User) {
   );
 }
 
+
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <View style={styles.soon}>
+      <Text style={styles.soonTitle}>{title}</Text>
+      <Text style={styles.soonText}>This part of Unizon is coming in the next update.</Text>
+    </View>
+  );
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("Explore");
-  const [items, setItems] = useState(seedListings);
-  const [queryText, setQueryText] = useState("");
-  const [category, setCategory] = useState("All items");
-  const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [selected, setSelected] = useState<Listing | null>(null);
+  const [mode, setMode] = useState<Mode>("buyer");
+  const [tab, setTab] = useState<Tab>("Home");
+  const [subPage, setSubPage] = useState<SubPage>(null);
   const [user, setUser] = useState<User | null>(auth?.currentUser || null);
   const [authOpen, setAuthOpen] = useState(false);
-  const [sellOpen, setSellOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
+  const [onboarded, setOnboarded] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // marketplace data
+  const [cloudItems, setCloudItems] = useState<Listing[]>([]);
+  const [events] = useState<CampusEvent[]>(seedEvents);
+  const [offers] = useState<Offer[]>(seedOffers);
+
+  const flash = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast((t) => (t === message ? "" : t)), 2600);
+  };
 
   useEffect(() => {
     const firebaseAuth = auth;
@@ -84,11 +92,7 @@ export default function App() {
         registerUser(nextUser)
           .then(() => setProfileReady(true))
           .catch((error) =>
-            setAuthError(
-              error instanceof Error
-                ? error.message
-                : "Could not create profile.",
-            ),
+            setAuthError(error instanceof Error ? error.message : "Could not create profile."),
           );
       else setProfileReady(false);
     };
@@ -102,54 +106,63 @@ export default function App() {
         if (result?.user) handleUser(result.user);
       })
       .catch((error) =>
-        setAuthError(
-          error instanceof Error
-            ? error.message
-            : "Google sign-in could not be completed.",
-        ),
+        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed."),
       );
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!db) return;
-    const listingsQuery = query(
-      collection(db, "listings"),
-      orderBy("createdAt", "desc"),
-    );
+    const listingsQuery = query(collection(db, "listings"), orderBy("createdAt", "desc"));
     return onSnapshot(
       listingsQuery,
       (snapshot) =>
-        setItems(
-          snapshot.empty
-            ? seedListings
-            : snapshot.docs.map(
-                (entry) => ({ id: entry.id, ...entry.data() }) as Listing,
-              ),
-        ),
-      () => setItems(seedListings),
+        setCloudItems(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Listing)),
+      () => setCloudItems([]),
     );
   }, []);
 
-  const filteredItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          (category === "All items" || item.category === category) &&
-          item.title.toLowerCase().includes(queryText.toLowerCase()),
-      ),
-    [category, items, queryText],
-  );
-  const myListings = useMemo(
-    () => (user ? items.filter((item) => item.sellerId === user.uid) : []),
-    [items, user],
-  );
-  const toggleSaved = (id: string) =>
-    setSavedIds((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
-    );
+  const items = useMemo(() => [...cloudItems, ...seedListings], [cloudItems]);
+  const visibleItems = useMemo(() => items.filter((i) => !i.soldOut), [items]);
+
+  /* ---------- navigation ---------- */
+
+  const goTab = (next: Tab) => {
+    setSubPage(null);
+    setTab(next);
+  };
+  const openCategory = (_name: string) => goTab("Search");
+  const openItem = (_item: Listing) => flash("Product details are coming in the next update");
+
+  /* ---------- auth (unchanged) ---------- */
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (!auth) throw new Error("Firebase is not configured yet.");
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    setUser(cred.user);
+    setAuthOpen(false);
+  };
+  const signUpWithEmail = async ({ name, email, phone, password }: SignUpData) => {
+    if (!auth) throw new Error("Firebase is not configured yet.");
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(cred.user, { displayName: name });
+    if (db)
+      await setDoc(
+        doc(db, "users", cred.user.uid),
+        {
+          uid: cred.user.uid,
+          displayName: name,
+          email,
+          phone,
+          campus: "North Campus",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    setUser(auth.currentUser);
+    setProfileReady(true);
+    setAuthOpen(false);
+  };
   const signInWithGoogle = async () => {
     if (!auth) return;
     setAuthError("");
@@ -166,12 +179,8 @@ export default function App() {
         setAuthOpen(false);
       }
     } catch (error) {
-      const code =
-        error instanceof Error ? error.message : "Google sign-in failed.";
-      if (
-        Platform.OS === "web" &&
-        /popup|cancelled-popup-request/i.test(code)
-      ) {
+      const code = error instanceof Error ? error.message : "Google sign-in failed.";
+      if (Platform.OS === "web" && /popup|cancelled-popup-request/i.test(code)) {
         await signInWithRedirect(auth, new GoogleAuthProvider());
         return;
       }
@@ -179,469 +188,85 @@ export default function App() {
       Alert.alert("Google sign-in failed", code);
     }
   };
-  const publish = async (
-    title: string,
-    price: string,
-    listingCategory: string,
-  ) => {
-    if (!user) {
-      setSellOpen(false);
-      setAuthOpen(true);
-      return;
-    }
-    await addDoc(collection(db!, "listings"), {
-      title,
-      price: Number(price),
-      category: listingCategory,
-      seller: user.displayName || user.email || "You",
-      sellerId: user.uid,
-      campus: "North Campus",
-      condition: "Good condition",
-      image: seedListings[0].image,
-      description: "New listing from a campus seller.",
-      createdAt: serverTimestamp(),
-    });
-    setSellOpen(false);
-  };
-  const contactSeller = () => {
-    if (!user) {
-      setAuthOpen(true);
-      return;
-    }
-    setSelected(null);
-    setTab("Messages");
-  };
+
+  if (!onboarded) {
+    return (
+      <OnboardingPage
+        onDone={() => {
+          setOnboarded(true);
+          setAuthOpen(true);
+        }}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      {tab === "Explore" && (
-        <ExplorePage
-          items={filteredItems}
-          query={queryText}
-          category={category}
-          savedIds={savedIds}
-          onQueryChange={setQueryText}
-          onCategoryChange={setCategory}
-          onSave={toggleSaved}
-          onOpen={setSelected}
-          onProfile={() => setTab("Profile")}
+
+      {mode === "seller" ? (
+        <ComingSoon title="Seller mode" />
+      ) : (
+        <>
+          {tab === "Home" && subPage === "discounts" && (
+            <DiscountsPage items={visibleItems} onOpen={openItem} onBack={() => setSubPage(null)} />
+          )}
+          {tab === "Home" && subPage === "events" && (
+            <EventsPage
+              items={visibleItems}
+              events={events}
+              offers={offers}
+              onOpen={openItem}
+              onBack={() => setSubPage(null)}
+            />
+          )}
+          {tab === "Home" && subPage === null && (
+            <HomePage
+              items={visibleItems}
+              events={events}
+              offers={offers}
+              onOpen={openItem}
+              onCategory={openCategory}
+              onSeeDiscounts={() => setSubPage("discounts")}
+              onSeeEvents={() => setSubPage("events")}
+            />
+          )}
+          {tab === "Search" && <ComingSoon title="Search" />}
+          {tab === "Messages" && <ComingSoon title="Messages" />}
+          {tab === "Cart" && <ComingSoon title="Cart" />}
+          {tab === "Profile" && <ComingSoon title="Profile" />}
+          <BottomTabs tabs={buyerTabs} current={tab} onChange={(key) => goTab(key as Tab)} />
+        </>
+      )}
+
+      <ModeToggle mode={mode} onChange={setMode} />
+
+      {toast ? (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      <Modal visible={authOpen} animationType="slide" onRequestClose={() => setAuthOpen(false)}>
+        <AuthPage
+          onSignIn={signInWithEmail}
+          onSignUp={signUpWithEmail}
+          onGoogle={signInWithGoogle}
+          onGuest={() => setAuthOpen(false)}
         />
-      )}
-      {tab === "Saved" && (
-        <SavedPage
-          items={items.filter((item) => savedIds.includes(item.id))}
-          onSave={toggleSaved}
-          onOpen={setSelected}
-        />
-      )}
-      {tab === "Messages" && (
-        <MessagesPage onBrowse={() => setTab("Explore")} />
-      )}
-      {tab === "MyListings" && (
-        <MyListingsPage
-          items={myListings}
-          onOpen={setSelected}
-          onSell={() => setSellOpen(true)}
-        />
-      )}
-      {tab === "Profile" && (
-        <ProfilePage
-          user={user}
-          savedCount={savedIds.length}
-          listingCount={myListings.length}
-          firebaseConfigured={firebaseConfigured}
-          profileReady={profileReady}
-          error={authError}
-          onMyListings={() => (user ? setTab("MyListings") : setAuthOpen(true))}
-          onSaved={() => setTab("Saved")}
-          onSignIn={() => setAuthOpen(true)}
-          onSignOut={() => auth && signOut(auth)}
-        />
-      )}
-      <BottomNav
-        tab={tab}
-        savedCount={savedIds.length}
-        onChange={setTab}
-        onSell={() => setSellOpen(true)}
-      />
-      <ListingModal
-        item={selected}
-        user={user}
-        onClose={() => setSelected(null)}
-        onContact={contactSeller}
-      />
-      <AuthModal
-        visible={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onSignIn={signInWithGoogle}
-        error={authError}
-      />
-      <SellModal
-        visible={sellOpen}
-        onClose={() => setSellOpen(false)}
-        onSubmit={publish}
-      />
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function BottomNav({
-  tab,
-  savedCount,
-  onChange,
-  onSell,
-}: {
-  tab: Tab;
-  savedCount: number;
-  onChange: (tab: Tab) => void;
-  onSell: () => void;
-}) {
-  return (
-    <View style={styles.nav}>
-      <NavItem
-        label="Explore"
-        icon="⌂"
-        active={tab === "Explore"}
-        onPress={() => onChange("Explore")}
-      />
-      <NavItem
-        label="Saved"
-        icon="♡"
-        active={tab === "Saved"}
-        badge={savedCount}
-        onPress={() => onChange("Saved")}
-      />
-      <NavItem
-        label="Messages"
-        icon="□"
-        active={tab === "Messages"}
-        onPress={() => onChange("Messages")}
-      />
-      <Pressable style={styles.sellButton} onPress={onSell}>
-        <Text style={styles.sellPlus}>＋</Text>
-        <Text style={styles.sellText}>Sell</Text>
-      </Pressable>
-    </View>
-  );
-}
-function NavItem({
-  label,
-  icon,
-  active,
-  badge,
-  onPress,
-}: {
-  label: string;
-  icon: string;
-  active: boolean;
-  badge?: number;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={styles.navItem} onPress={onPress}>
-      <View>
-        <Text style={[styles.navIcon, active && styles.navActive]}>{icon}</Text>
-        {badge ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={[styles.navLabel, active && styles.navActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-function ListingModal({
-  item,
-  user,
-  onClose,
-  onContact,
-}: {
-  item: Listing | null;
-  user: User | null;
-  onClose: () => void;
-  onContact: () => void;
-}) {
-  return (
-    <Modal
-      visible={item !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      {item && (
-        <View style={styles.backdrop}>
-          <View style={styles.detail}>
-            <Image source={{ uri: item.image }} style={styles.detailImage} />
-            <Pressable style={styles.close} onPress={onClose}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-            <View style={styles.detailBody}>
-              <Text style={styles.detailCategory}>
-                {item.category.toUpperCase()}
-              </Text>
-              <Text style={styles.detailTitle}>{item.title}</Text>
-              <Text style={styles.detailPrice}>${item.price}</Text>
-              <Text style={styles.muted}>
-                {item.condition} · {item.campus} · {item.seller}
-              </Text>
-              <Text style={styles.description}>{item.description}</Text>
-              <Pressable style={styles.primary} onPress={onContact}>
-                <Text style={styles.primaryText}>
-                  {user
-                    ? `Message ${item.seller}`
-                    : "Sign in to contact seller"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-    </Modal>
-  );
-}
-function AuthModal({
-  visible,
-  onClose,
-  onSignIn,
-  error,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSignIn: () => Promise<void>;
-  error: string;
-}) {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.backdrop}>
-        <View style={styles.auth}>
-          <Text style={styles.formTitle}>Welcome to campus marketplace</Text>
-          <Text style={styles.authMessage}>
-            Sign in to save listings, message sellers, and publish your own
-            items.
-          </Text>
-          {error ? <Text style={styles.authError}>{error}</Text> : null}
-          <Pressable style={styles.googleButton} onPress={onSignIn}>
-            <Text style={styles.googleMark}>G</Text>
-            <Text style={styles.outlineText}>Continue with Google</Text>
-          </Pressable>
-          <Pressable style={styles.outline} onPress={onClose}>
-            <Text style={styles.outlineText}>Maybe later</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-function SellModal({
-  visible,
-  onClose,
-  onSubmit,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSubmit: (title: string, price: string, category: string) => Promise<void>;
-}) {
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("Textbooks");
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.backdrop}>
-        <View style={styles.form}>
-          <View style={styles.formHeader}>
-            <Text style={styles.formTitle}>Sell an item</Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.label}>What are you selling?</Text>
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="e.g. Organic Chemistry textbook"
-            style={styles.field}
-          />
-          <Text style={styles.label}>Price</Text>
-          <TextInput
-            value={price}
-            onChangeText={setPrice}
-            keyboardType="numeric"
-            placeholder="$ 0"
-            style={styles.field}
-          />
-          <Pressable
-            disabled={!title || !price}
-            style={[styles.primary, (!title || !price) && styles.disabled]}
-            onPress={() => onSubmit(title, price, category)}
-          >
-            <Text style={styles.primaryText}>Publish listing</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8F8F4" },
-  nav: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 82,
-    backgroundColor: "#FFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E8EBE5",
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-  },
-  navItem: { alignItems: "center", minWidth: 54 },
-  navIcon: { color: "#83918A", fontSize: 22 },
-  navLabel: { color: "#83918A", fontSize: 10, marginTop: 3 },
-  navActive: { color: "#1D6B54" },
-  badge: {
-    position: "absolute",
-    right: -12,
-    top: -3,
-    backgroundColor: "#C3535B",
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: "center",
-  },
-  badgeText: { color: "#FFF", fontSize: 9, fontWeight: "800" },
-  sellButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E6F0E6",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    gap: 4,
-  },
-  sellPlus: { color: "#247055", fontSize: 20 },
-  sellText: { color: "#247055", fontWeight: "800", fontSize: 12 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15,40,33,.45)",
-    justifyContent: "flex-end",
-  },
-  detail: {
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: "hidden",
-  },
-  detailImage: { width: "100%", height: 230 },
-  close: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#FFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeText: { color: "#173C34", fontSize: 26 },
-  detailBody: { padding: 24 },
-  detailCategory: {
-    color: "#23775D",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-  },
-  detailTitle: {
-    color: "#173C34",
-    fontSize: 25,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-  detailPrice: {
-    color: "#1C7057",
-    fontSize: 22,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-  muted: { color: "#87918C", fontSize: 12 },
-  description: {
-    color: "#66736D",
-    fontSize: 14,
-    lineHeight: 21,
-    marginVertical: 20,
-  },
-  primary: {
-    height: 50,
-    backgroundColor: "#1F5D4C",
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 24,
-  },
-  primaryText: { color: "#FFF", fontWeight: "800" },
-  auth: { backgroundColor: "#FFF", borderRadius: 20, padding: 24, margin: 20 },
-  form: {
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-  },
-  formHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  formTitle: { color: "#173C34", fontSize: 22, fontWeight: "800" },
-  authMessage: { color: "#87918C", lineHeight: 20, marginTop: 10 },
-  authError: {
-    color: "#B64950",
-    backgroundColor: "#FBECEE",
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 12,
-    marginTop: 16,
-  },
-  googleButton: {
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#D7DDD8",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 24,
-    gap: 10,
-  },
-  googleMark: { color: "#4285F4", fontSize: 18, fontWeight: "800" },
-  outline: {
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#BCD0C3",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 12,
-  },
-  outlineText: { color: "#1F5D4C", fontWeight: "800" },
-  label: {
-    color: "#365B4C",
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 18,
-    marginBottom: 7,
-  },
-  field: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#DDE4DC",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    color: "#173C34",
-  },
-  disabled: { opacity: 0.45 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  toastWrap: { position: "absolute", left: 0, right: 0, bottom: 110, alignItems: "center", zIndex: 60 },
+  toast: { backgroundColor: colors.ink, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 11 },
+  toastText: { color: "#FFF", fontWeight: "700", fontSize: 13 },
+  soon: { flex: 1, alignItems: "center", justifyContent: "center", padding: 30 },
+  soonTitle: { color: colors.ink, fontSize: 20, fontWeight: "800", marginBottom: 6 },
+  soonText: { color: colors.muted, textAlign: "center", lineHeight: 20 },
 });
