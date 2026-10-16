@@ -9,11 +9,11 @@ College and university students frequently buy and sell textbooks, electronics, 
 ---
 
 ## Group Members
-- **Isfak**: `<Full name> (<reg no>)`
-- **Jarith**: `<Full name> (<reg no>)`
-- **Rikas**: `<Full name> (<reg no>)`
-- **Faisan**: `<Full name> (<reg no>)`
-- **Milfar**: `<Full name> (<reg no>)`
+- **Isfak**: M.I. Mohamed Isfak (2023/CSC/044)
+- **Jarith**: M.S.A.M. Jarith (2023/CSC/050)
+- **Rikas**: MNM. Rikas (2023/CSC/046)
+- **Faisan**: PMF. Mohamed (2023/CSC/085)
+- **Milfar**: R.M. Milfar (2023/CSC/063)
 
 ---
 
@@ -84,8 +84,8 @@ College and university students frequently buy and sell textbooks, electronics, 
 
 | Group Member | Contribution Description |
 | :--- | :--- |
-| **Isfak** | `<Contribution description placeholder>` |
-| **Jarith** | `<Contribution description placeholder>` |
-| **Rikas** | `<Contribution description placeholder>` |
-| **Faisan** | `<Contribution description placeholder>` |
-| **Milfar** | `<Contribution description placeholder>` |
+| **Isfak** | Created the Firebase project, implemented Mark as Sold (status field, seller-only button, Firestore update), wrote the README, managed the GitHub repository and merged pull requests. |
+| **Jarith** | Implemented price filter and price sorting on the Explore page. |
+| **Rikas** | Implemented Sell form validation with category and condition pickers. |
+| **Faisan** | Implemented the My Listings dashboard (total, active and sold counts, edit listing, delete with in-app confirmation). |
+| **Milfar** | Implemented the SOLD badge on listing cards and details, category-specific images for new listings, and the README member details. |
