@@ -1,41 +1,60 @@
-# Campus Marketplace
+# Campus Marketplace — Group 16
 
-Expo SDK 57 React Native app for buying and selling items within a campus community.
+A campus marketplace application where students can browse items and
+connect with sellers.
+
+This group project extends the Campus Marketplace starter provided by
+[webtegy](https://github.com/webtegy/campus-marketplace).
+
+## Group members
+
+| Member | Name |
+|---|------------------------------|
+| 1 | 2023CSC097-SENARATH  U.S.O.V |
+| 2 | 2023CSC096-BANDARA R.B.M.H   |
+| 3 | 2023CSC098-Y.N.M.AJMAL       |
+| 4 | 2023CSC099-R.N.M.AQEEL       |
+| 5 | 2023CSC093-A.J.M.SHAMIL      |
+
+## Technologies
+
+- React Native
+- Expo
+- TypeScript
+- Firebase Authentication
+- Cloud Firestore
+
+## Current stage
+
+This branch establishes the development environment, configuration
+template, documentation, and development checks.
+
+The inherited starter includes listing browsing, title search,
+category filtering, listing details, account screens, a basic publishing
+flow, and in-memory saved listings.
+
+Messaging is currently a placeholder. Saved listings do not yet persist
+after restarting the application.
+
+## Planned integration
+
+1. Project setup and development checks.
+2. Authentication and application data services.
+3. Browsing, search, categories, and saved listings.
+4. Listing creation, editing, deletion, and sold status.
+5. Messaging and final integration.
+
+These are integration areas. Individual contributions will be recorded
+according to work actually performed.
 
 ## Run locally
 
-Expo SDK 57 requires Node 22.13 or newer.
+Install Node.js 22.13 or newer.
 
-```bash
-cp .env.example .env
-npm install
-npm run web
-```
+Clone the group repository:
 
-The app runs in demo mode until Firebase values are added to `.env`.
-
-## Firebase setup
-
-1. Create a Firebase project and register a Web app.
-2. Enable Google Authentication under Authentication > Sign-in method. Anonymous Authentication remains available for native fallback.
-3. Create a Cloud Firestore database.
-4. Copy the Web app configuration into `.env` using `.env.example`.
-5. Deploy `firestore.rules` with the Firebase CLI or paste them into the Firestore Rules tab.
-
-The app uses:
-
-- `listings`: public reads, authenticated seller-owned creates and edits.
-- `users/{uid}` and `users/{uid}/saved/{listingId}`: owner-only access.
-- `conversations`: members-only access, with messages in a subcollection.
-
-The client Firebase configuration is intentionally public. Access control belongs in Authentication, Firestore Rules, and App Check; never put Admin SDK credentials in this app.
-
-## Current product flows
-
-- Explore listings with search and category filters.
-- Browse and search without signing in; Google sign-in is required to contact sellers or publish listings.
-- Save and unsave listings.
-- Open a listing detail view and start a seller conversation.
-- Publish a basic listing through the Sell flow.
-- Sign in anonymously for a frictionless student account.
-- View Saved, Messages, and Profile pages.
+```powershell
+git clone https://github.com/MhdAqeel/campus-marketplace-group-16-.git
+cd campus-marketplace-group-16-
+npm.cmd install
+npm.cmd run web
