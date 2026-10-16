@@ -1,8 +1,9 @@
-
-**5. Create `docs/TEAM_PLAN.md`**
-
-```markdown
 # Group 16 — Team Plan
+
+These are planned integration areas, not claims of completed features or
+individual authorship. The starter already contains basic UI, authentication,
+and publishing code. Each contribution must distinguish inherited behavior from
+new work. Setup work does not include implementing the other four areas.
 
 ## Integration order
 

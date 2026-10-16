@@ -32,7 +32,8 @@ yarn-error.*
 
 # local env files
 .env
-.env*.local
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -41,13 +42,9 @@ yarn-error.*
 /ios
 /android
 
-# Local configuration and Firebase administrative credentials
-.env
-.env.local
-.env.*.local
+# Firebase administrative credentials
 *service-account*.json
+*serviceAccount*.json
+*firebase-admin*.json
 *adminsdk*.json
-
-# Keep the configuration template tracked
-!.env.example
 
