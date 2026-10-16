@@ -40,3 +40,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local configuration and Firebase administrative credentials
+.env
+.env.local
+.env.*.local
+*service-account*.json
+*adminsdk*.json
+
+# Keep the configuration template tracked
+!.env.example
+
