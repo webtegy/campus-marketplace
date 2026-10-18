@@ -15,6 +15,7 @@ import {
   addDoc,
   collection,
   doc,
+  deleteDoc,
   onSnapshot,
   orderBy,
   query,
@@ -41,9 +42,10 @@ import { MessagesPage } from "./pages/MessagesPage";
 import { MyListingsPage } from "./pages/MyListingsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SavedPage } from "./pages/SavedPage";
+import { ReportListingModal } from "./components/ReportListingModal";
 import { seedListings } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { Listing, Tab } from "./types";
+import { Listing, ListingReport, Tab } from "./types";
 
 async function registerUser(user: User) {
   if (!db) return;
@@ -74,6 +76,14 @@ export default function App() {
   const [sellOpen, setSellOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
+  const [reporting, setReporting] = useState<Listing | null>(null);
+
+  useEffect(() => {
+    if (!db || !user) return;
+    return onSnapshot(collection(db, "users", user.uid, "saved"), (snapshot) => {
+      setSavedIds(snapshot.docs.map((entry) => entry.id));
+    });
+  }, [user]);
 
   useEffect(() => {
     const firebaseAuth = auth;
@@ -144,12 +154,49 @@ export default function App() {
     () => (user ? items.filter((item) => item.sellerId === user.uid) : []),
     [items, user],
   );
-  const toggleSaved = (id: string) =>
+  const toggleSaved = async (id: string) => {
+    const wasSaved = savedIds.includes(id);
     setSavedIds((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
+      wasSaved ? current.filter((value) => value !== id) : [...current, id],
     );
+    try {
+      if (db && user) {
+        const savedRef = doc(db, "users", user.uid, "saved", id);
+        if (wasSaved) await deleteDoc(savedRef);
+        else
+          await setDoc(savedRef, {
+            listingId: id,
+            savedAt: serverTimestamp(),
+          });
+      }
+    } catch (error) {
+      setSavedIds((current) =>
+        wasSaved ? [...current, id] : current.filter((value) => value !== id),
+      );
+      Alert.alert(
+        "Could not update saved items",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    }
+  };
+  const submitReport = async (report: ListingReport) => {
+    if (!db || !user) {
+      setAuthOpen(true);
+      return;
+    }
+    try {
+      await addDoc(collection(db, "listingReports"), {
+        ...report,
+        reporterId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      Alert.alert(
+        "Could not submit report",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    }
+  };
   const signInWithGoogle = async () => {
     if (!auth) return;
     setAuthError("");
@@ -270,6 +317,20 @@ export default function App() {
         user={user}
         onClose={() => setSelected(null)}
         onContact={contactSeller}
+        onReport={() => {
+          if (!user) {
+            setAuthOpen(true);
+            return;
+          }
+          setReporting(selected);
+          setSelected(null);
+        }}
+      />
+      <ReportListingModal
+        visible={reporting !== null}
+        listing={reporting}
+        onClose={() => setReporting(null)}
+        onSubmitReport={submitReport}
       />
       <AuthModal
         visible={authOpen}
@@ -357,11 +418,13 @@ function ListingModal({
   user,
   onClose,
   onContact,
+  onReport,
 }: {
   item: Listing | null;
   user: User | null;
   onClose: () => void;
   onContact: () => void;
+  onReport: () => void;
 }) {
   return (
     <Modal
@@ -393,6 +456,9 @@ function ListingModal({
                     ? `Message ${item.seller}`
                     : "Sign in to contact seller"}
                 </Text>
+              </Pressable>
+              <Pressable style={styles.reportButton} onPress={onReport}>
+                <Text style={styles.reportText}>Report this listing</Text>
               </Pressable>
             </View>
           </View>
@@ -584,6 +650,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   primaryText: { color: "#FFF", fontWeight: "800" },
+  reportButton: {
+    alignItems: "center",
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  reportText: { color: "#C3535B", fontSize: 13, fontWeight: "700" },
   auth: { backgroundColor: "#FFF", borderRadius: 20, padding: 24, margin: 20 },
   form: {
     backgroundColor: "#FFF",
