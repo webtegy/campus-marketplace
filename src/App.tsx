@@ -44,6 +44,15 @@ import { SavedPage } from "./pages/SavedPage";
 import { seedListings } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
 import { Listing, Tab } from "./types";
+import { SupportChatButton, SupportChatModal } from "./features/support-chatbot";
+import { RentBorrowModal, RentRequestsModal } from "./features/rent-borrow";
+import { ConditionReviewsSection } from "./features/condition-rating";
+import { ItemCondition, filterMarketplaceItems } from "./features/condition-filter";
+import {
+  UniversitySelectionModal,
+  VerifiedBadge,
+  isUserUniversityVerified,
+} from "./features/university-verification";
 
 async function registerUser(user: User) {
   if (!db) return;
@@ -74,13 +83,22 @@ export default function App() {
   const [sellOpen, setSellOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [rentModalOpen, setRentModalOpen] = useState(false);
+  const [rentRequestsOpen, setRentRequestsOpen] = useState(false);
+  const [selectedCondition, setSelectedCondition] =
+    useState<ItemCondition>("All conditions");
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
 
   useEffect(() => {
     const firebaseAuth = auth;
     if (!firebaseAuth) return;
     const handleUser = (nextUser: User | null) => {
       setUser(nextUser);
-      if (nextUser)
+      if (nextUser) {
+        if (!isUserUniversityVerified(nextUser)) {
+          setVerifyModalOpen(true);
+        }
         registerUser(nextUser)
           .then(() => setProfileReady(true))
           .catch((error) =>
@@ -90,7 +108,7 @@ export default function App() {
                 : "Could not create profile.",
             ),
           );
-      else setProfileReady(false);
+      } else setProfileReady(false);
     };
     let unsubscribe: () => void = () => undefined;
     setPersistence(firebaseAuth, browserLocalPersistence)
@@ -133,13 +151,22 @@ export default function App() {
 
   const filteredItems = useMemo(
     () =>
-      items.filter(
-        (item) =>
-          (category === "All items" || item.category === category) &&
-          item.title.toLowerCase().includes(queryText.toLowerCase()),
-      ),
-    [category, items, queryText],
+      filterMarketplaceItems({
+        items,
+        category,
+        condition: selectedCondition,
+        query: queryText,
+      }),
+    [items, category, selectedCondition, queryText]
   );
+
+  const handleListingUpdated = (listingId: string) => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === listingId ? ({ ...item, isAvailable: false } as Listing) : item
+      )
+    );
+  };
   const myListings = useMemo(
     () => (user ? items.filter((item) => item.sellerId === user.uid) : []),
     [items, user],
@@ -220,12 +247,15 @@ export default function App() {
           items={filteredItems}
           query={queryText}
           category={category}
+          selectedCondition={selectedCondition}
           savedIds={savedIds}
           onQueryChange={setQueryText}
           onCategoryChange={setCategory}
+          onConditionChange={setSelectedCondition}
           onSave={toggleSaved}
           onOpen={setSelected}
           onProfile={() => setTab("Profile")}
+          onOpenRentRequests={() => setRentRequestsOpen(true)}
         />
       )}
       {tab === "Saved" && (
@@ -270,6 +300,21 @@ export default function App() {
         user={user}
         onClose={() => setSelected(null)}
         onContact={contactSeller}
+        onRentBorrow={() => setRentModalOpen(true)}
+      />
+      <RentBorrowModal
+        visible={rentModalOpen}
+        item={selected}
+        currentUserId={user?.uid || null}
+        currentUserName={user?.displayName || "Campus Student"}
+        currentUserEmail={user?.email || undefined}
+        onClose={() => setRentModalOpen(false)}
+      />
+      <RentRequestsModal
+        visible={rentRequestsOpen}
+        sellerId={user?.uid || null}
+        onClose={() => setRentRequestsOpen(false)}
+        onListingUpdated={handleListingUpdated}
       />
       <AuthModal
         visible={authOpen}
@@ -281,6 +326,22 @@ export default function App() {
         visible={sellOpen}
         onClose={() => setSellOpen(false)}
         onSubmit={publish}
+      />
+      <SupportChatButton onPress={() => setSupportOpen(true)} />
+      <SupportChatModal
+        visible={supportOpen}
+        onClose={() => setSupportOpen(false)}
+      />
+      <UniversitySelectionModal
+        visible={verifyModalOpen}
+        user={user}
+        onVerified={() => setVerifyModalOpen(false)}
+        onSwitchAccount={() => {
+          auth && signOut(auth);
+          setVerifyModalOpen(false);
+          setAuthOpen(true);
+        }}
+        onClose={() => setVerifyModalOpen(false)}
       />
     </SafeAreaView>
   );
@@ -314,13 +375,12 @@ function BottomNav({
       />
       <NavItem
         label="Messages"
-        icon="□"
+        icon="💬"
         active={tab === "Messages"}
         onPress={() => onChange("Messages")}
       />
       <Pressable style={styles.sellButton} onPress={onSell}>
-        <Text style={styles.sellPlus}>＋</Text>
-        <Text style={styles.sellText}>Sell</Text>
+        <Text style={styles.sellText}>+ Sell</Text>
       </Pressable>
     </View>
   );
@@ -340,7 +400,7 @@ function NavItem({
 }) {
   return (
     <Pressable style={styles.navItem} onPress={onPress}>
-      <View>
+      <View style={styles.iconContainer}>
         <Text style={[styles.navIcon, active && styles.navActive]}>{icon}</Text>
         {badge ? (
           <View style={styles.badge}>
@@ -348,7 +408,8 @@ function NavItem({
           </View>
         ) : null}
       </View>
-      <Text style={[styles.navLabel, active && styles.navActive]}>{label}</Text>
+      <Text style={[styles.navLabel, active && styles.navActiveText]}>{label}</Text>
+      {active ? <View style={styles.activeBar} /> : <View style={styles.activeBarPlaceholder} />}
     </Pressable>
   );
 }
@@ -357,11 +418,13 @@ function ListingModal({
   user,
   onClose,
   onContact,
+  onRentBorrow,
 }: {
   item: Listing | null;
   user: User | null;
   onClose: () => void;
   onContact: () => void;
+  onRentBorrow: () => void;
 }) {
   return (
     <Modal
@@ -373,28 +436,57 @@ function ListingModal({
       {item && (
         <View style={styles.backdrop}>
           <View style={styles.detail}>
-            <Image source={{ uri: item.image }} style={styles.detailImage} />
-            <Pressable style={styles.close} onPress={onClose}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-            <View style={styles.detailBody}>
-              <Text style={styles.detailCategory}>
-                {item.category.toUpperCase()}
-              </Text>
-              <Text style={styles.detailTitle}>{item.title}</Text>
-              <Text style={styles.detailPrice}>${item.price}</Text>
-              <Text style={styles.muted}>
-                {item.condition} · {item.campus} · {item.seller}
-              </Text>
-              <Text style={styles.description}>{item.description}</Text>
-              <Pressable style={styles.primary} onPress={onContact}>
-                <Text style={styles.primaryText}>
-                  {user
-                    ? `Message ${item.seller}`
-                    : "Sign in to contact seller"}
-                </Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 28 }}
+            >
+              <Image source={{ uri: item.image }} style={styles.detailImage} />
+              <Pressable style={styles.close} onPress={onClose}>
+                <Text style={styles.closeText}>×</Text>
               </Pressable>
-            </View>
+              <View style={styles.detailBody}>
+                <Text style={styles.detailCategory}>
+                  {item.category.toUpperCase()}
+                </Text>
+                <Text style={styles.detailTitle}>{item.title}</Text>
+                <Text style={styles.detailPrice}>${item.price}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginVertical: 4 }}>
+                  <Text style={styles.muted}>
+                    {item.condition} · {item.campus} · {item.seller}
+                  </Text>
+                  <VerifiedBadge compact />
+                </View>
+                <Text style={styles.description}>{item.description}</Text>
+
+                {/* Member 1: Rent or Borrow Action */}
+                <Pressable
+                  style={styles.rentBorrowBtn}
+                  onPress={user ? onRentBorrow : onContact}
+                >
+                  <Text style={styles.rentBorrowBtnText}>
+                    {user
+                      ? "🤝 Request Rent or Borrow"
+                      : "Sign in to rent or borrow"}
+                  </Text>
+                </Pressable>
+
+                {/* Message Seller Action */}
+                <Pressable style={styles.primary} onPress={onContact}>
+                  <Text style={styles.primaryText}>
+                    {user
+                      ? `Message ${item.seller}`
+                      : "Sign in to contact seller"}
+                  </Text>
+                </Pressable>
+
+                {/* Member 3: Buyer-Verified Condition Rating */}
+                <ConditionReviewsSection
+                  listingId={item.id}
+                  listingTitle={item.title}
+                  currentUserName={user?.displayName || "Campus Student"}
+                />
+              </View>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -485,24 +577,60 @@ function SellModal({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8F8F4" },
+  container: { flex: 1, backgroundColor: "#F9FAF4" },
   nav: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 82,
-    backgroundColor: "#FFF",
+    height: Platform.OS === "android" ? 88 : 78,
+    paddingBottom: Platform.OS === "android" ? 18 : 6,
+    backgroundColor: "#FDFEF9",
     borderTopWidth: 1,
-    borderTopColor: "#E8EBE5",
+    borderTopColor: "#EBF1EC",
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
   },
-  navItem: { alignItems: "center", minWidth: 54 },
-  navIcon: { color: "#83918A", fontSize: 22 },
-  navLabel: { color: "#83918A", fontSize: 10, marginTop: 3 },
-  navActive: { color: "#1D6B54" },
+  navItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 60,
+  },
+  iconContainer: {
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  navIcon: {
+    color: "#6D8177",
+    fontSize: 22,
+  },
+  navLabel: {
+    color: "#6D8177",
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  navActive: {
+    color: "#103C31",
+  },
+  navActiveText: {
+    color: "#103C31",
+    fontWeight: "800",
+  },
+  activeBar: {
+    width: 26,
+    height: 3,
+    backgroundColor: "#103C31",
+    borderRadius: 2,
+    marginTop: 4,
+  },
+  activeBarPlaceholder: {
+    width: 26,
+    height: 3,
+    marginTop: 4,
+  },
   badge: {
     position: "absolute",
     right: -12,
@@ -512,25 +640,34 @@ const styles = StyleSheet.create({
     minWidth: 16,
     height: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
-  badgeText: { color: "#FFF", fontSize: 9, fontWeight: "800" },
+  badgeText: {
+    color: "#FFF",
+    fontSize: 9,
+    fontWeight: "800",
+  },
   sellButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E6F0E6",
+    height: 38,
+    borderRadius: 20,
+    backgroundColor: "#D6F1E4",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    gap: 4,
+    justifyContent: "center",
   },
-  sellPlus: { color: "#247055", fontSize: 20 },
-  sellText: { color: "#247055", fontWeight: "800", fontSize: 12 },
+  sellText: {
+    color: "#103C31",
+    fontWeight: "800",
+    fontSize: 13.5,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(15,40,33,.45)",
     justifyContent: "flex-end",
   },
   detail: {
+    maxHeight: "88%",
     backgroundColor: "#FFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -575,13 +712,28 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginVertical: 20,
   },
+  rentBorrowBtn: {
+    height: 50,
+    backgroundColor: "#E2F0EA",
+    borderWidth: 1.5,
+    borderColor: "#1C7057",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 16,
+  },
+  rentBorrowBtnText: {
+    color: "#1C7057",
+    fontWeight: "800",
+    fontSize: 14,
+  },
   primary: {
     height: 50,
     backgroundColor: "#1F5D4C",
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 24,
+    marginTop: 10,
   },
   primaryText: { color: "#FFF", fontWeight: "800" },
   auth: { backgroundColor: "#FFF", borderRadius: 20, padding: 24, margin: 20 },
